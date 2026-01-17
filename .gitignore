@@ -1,1 +1,24 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Entorno Virtual (¡VITAL!) ---
+venv/
+env/
+.venv/
 .env
+
+# --- Base de Datos ---
+*.db
+*.sqlite3
+*.sqlite
+app/database.db
+
+# --- IDEs (Configuraciones de tu editor) ---
+.vscode/
+.idea/
+
+# --- Logs y Archivos Temporales ---
+*.log
+.DS_Store
