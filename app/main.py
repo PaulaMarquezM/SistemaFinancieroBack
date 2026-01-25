@@ -6,11 +6,13 @@ from app.api.v1 import amortization
 # Importamos los routers (modulares)
 from app.api.v1.interest import router as interest_router
 from app.api.v1.auth import router as auth_router
+from app.modules.interes.router import router as interes_router
 
 # Creamos las tablas en la DB al iniciar (Solo para desarrollo rápido)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Sistema Financiero API", version="1.0.0")
+
 
 # Configuración Centralizada de CORS
 setup_cors(app)
@@ -21,6 +23,9 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(interest_router, prefix="/api/v1/interest", tags=["Interest"])
 
 app.include_router(amortization.router, prefix="/api/v1/amortization", tags=["Amortization"])
+
+#interes SImple y comun
+app.include_router(interes_router)
 
 @app.get("/")
 def read_root():
