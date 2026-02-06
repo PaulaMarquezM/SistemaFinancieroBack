@@ -9,9 +9,6 @@ def get_customer(db: Session, customer_id: int):
 def get_customer_by_document(db: Session, document_number: str):
     return db.query(Customer).filter(Customer.document_number == document_number).first()
 
-def get_customer_by_email(db: Session, email: str):
-    return db.query(Customer).filter(Customer.email == email).first()
-
 def get_customers(db: Session, skip: int = 0, limit: int = 100):
     return db.query(Customer).offset(skip).limit(limit).all()
 
