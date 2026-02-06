@@ -1,43 +1,68 @@
-# app/api/v1/customers.py
-from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
 from typing import List
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from app.core.database import get_db
+from app.models.customer import Customer
 from app.schemas.customer import CustomerCreate, CustomerResponse
-from app.services import customer_service
 
 router = APIRouter()
 
+
+def _model_dump(payload: CustomerCreate) -> dict:
+    if hasattr(payload, "model_dump"):
+        return payload.model_dump()
+    return payload.dict()
+
+
 @router.post("/", response_model=CustomerResponse)
-def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
-    """Crear un nuevo cliente."""
-    db_customer = customer_service.get_customer_by_document(db, document_number=customer.document_number)
-    if db_customer:
-        raise HTTPException(status_code=400, detail="Customer with this document already exists")
-    if customer.email:
-        db_customer_email = customer_service.get_customer_by_email(db, email=customer.email)
-        if db_customer_email:
+def create_customer(payload: CustomerCreate, db: Session = Depends(get_db)):
+    # Pre-check unique constraints for clearer errors
+    if db.query(Customer).filter(Customer.document_number == payload.document_number).first():
+        raise HTTPException(status_code=400, detail="Document number already registered")
+
+    if payload.email:
+        if db.query(Customer).filter(Customer.email == payload.email).first():
             raise HTTPException(status_code=400, detail="Email already registered")
-    return customer_service.create_customer(db=db, customer=customer)
+
+    customer = Customer(**_model_dump(payload))
+    db.add(customer)
+
+    try:
+        db.commit()
+        db.refresh(customer)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Customer already exists")
+
+    return customer
+
 
 @router.get("/", response_model=List[CustomerResponse])
-def read_customers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """Listar todos los clientes."""
-    return customer_service.get_customers(db, skip=skip, limit=limit)
+def list_customers(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    return db.query(Customer).offset(skip).limit(limit).all()
+
 
 @router.get("/{customer_id}", response_model=CustomerResponse)
-def read_customer(customer_id: int, db: Session = Depends(get_db)):
-    """Ver un cliente específico."""
-    db_customer = customer_service.get_customer(db, customer_id=customer_id)
-    if db_customer is None:
+def get_customer(customer_id: int, db: Session = Depends(get_db)):
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    return db_customer
+    return customer
+
 
 @router.delete("/{customer_id}")
 def delete_customer(customer_id: int, db: Session = Depends(get_db)):
-    """Eliminar un cliente."""
-    success = customer_service.delete_customer(db, customer_id=customer_id)
-    if not success:
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+
+    db.delete(customer)
+    db.commit()
     return {"message": "Customer deleted successfully"}
