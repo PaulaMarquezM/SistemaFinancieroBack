@@ -22,3 +22,4 @@ app/database.db
 # --- Logs y Archivos Temporales ---
 *.log
 .DS_Store
+seed_data.py

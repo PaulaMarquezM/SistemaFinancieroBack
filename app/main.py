@@ -9,6 +9,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.credits import router as credits_router
 from app.api.v1.customers import router as customers_router
 from app.modules.interes.router import router as interes_router
+from app.api.v1.customers import router as customers_router
 
 # Creamos las tablas en la DB al iniciar (Solo para desarrollo rápido)
 Base.metadata.create_all(bind=engine)
