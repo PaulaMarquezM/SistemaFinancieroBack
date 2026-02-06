@@ -10,7 +10,7 @@ from app.services import credit_service
 router = APIRouter()
 
 
-@router.post("/", response_model=CreditResponse)
+@router.post("/", response_model=CreditWithPayments)
 def create_credit(credit_data: CreditCreate, db: Session = Depends(get_db)):
     """Create a new credit with its payment schedule."""
     try:
