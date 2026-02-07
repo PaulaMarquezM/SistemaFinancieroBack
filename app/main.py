@@ -9,6 +9,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.credits import router as credits_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.assets import router as assets_router
+from app.api.v1.accounts_receivable import router as accounts_receivable_router
 from app.modules.interes.router import router as interes_router
 
 # Creamos las tablas en la DB al iniciar (Solo para desarrollo rápido)
@@ -29,6 +30,7 @@ app.include_router(amortization.router, prefix="/api/v1/amortization", tags=["Am
 app.include_router(credits_router, prefix="/api/v1/credits", tags=["Credits"])
 app.include_router(customers_router, prefix="/api/v1/customers", tags=["Customers"])
 app.include_router(assets_router, prefix="/api/v1/assets", tags=["Assets"])
+app.include_router(accounts_receivable_router, prefix="/api/v1/accounts-receivable", tags=["Accounts Receivable"])
 
 #interes SImple y comun
 app.include_router(interes_router)
