@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 # NOTE:
 # Keep this as a simple config file for now.
@@ -19,3 +20,11 @@ def get_report_header(report_type: str) -> dict:
         "issued_date": now.date().isoformat(),
         "responsible": REPORT_RESPONSIBLE,
     }
+
+
+def get_logo_path() -> str | None:
+    base_dir = Path(__file__).resolve().parent.parent  # app/
+    candidate = base_dir / "assets" / COOP_LOGO
+    if candidate.exists():
+        return str(candidate)
+    return None

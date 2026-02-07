@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.report_config import get_report_header
+from app.core.report_config import get_report_header, get_logo_path
 from app.schemas.account_receivable import (
     AccountReceivableResponse,
     AccountReceivableMonthlyReport,
@@ -36,7 +36,7 @@ def _build_pdf(report_header: dict, report: dict) -> BytesIO:
         from reportlab.lib import colors
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     except ImportError as exc:
         raise HTTPException(status_code=500, detail="reportlab is not installed") from exc
 
@@ -52,14 +52,31 @@ def _build_pdf(report_header: dict, report: dict) -> BytesIO:
     styles = getSampleStyleSheet()
 
     elements = []
-    elements.append(Paragraph(report_header["coop_name"], styles["Title"]))
-    elements.append(Paragraph(report_header["report_type"], styles["Heading2"]))
-    elements.append(
-        Paragraph(
-            f"Fecha emision: {report_header['issued_date']} &nbsp;&nbsp;|&nbsp;&nbsp; Responsable: {report_header['responsible']}",
-            styles["Normal"],
+    logo_path = get_logo_path()
+    logo = ""
+    if logo_path:
+        logo = Image(logo_path, width=0.7 * inch, height=0.7 * inch)
+
+    header_text = (
+        f"<b>{report_header['coop_name']}</b><br/>"
+        f"{report_header['report_type']}<br/>"
+        f"Fecha emision: {report_header['issued_date']}<br/>"
+        f"Responsable: {report_header['responsible']}"
+    )
+    header_table = Table(
+        [[logo, Paragraph(header_text, styles["Normal"])]],
+        colWidths=[0.9 * inch, 5.5 * inch],
+        hAlign="LEFT",
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
         )
     )
+    elements.append(header_table)
     elements.append(Spacer(1, 0.2 * inch))
 
     table_data = [["ID", "Cliente", "Fecha Venc.", "Monto", "Estado"]]
