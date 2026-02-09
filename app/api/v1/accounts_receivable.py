@@ -13,22 +13,27 @@ from app.services import account_receivable_service
 
 router = APIRouter()
 
-
 @router.get("/pending", response_model=list[AccountReceivableResponse])
 def list_pending(db: Session = Depends(get_db)):
     return account_receivable_service.list_pending(db)
 
-
-@router.get("/monthly-report", response_model=AccountReceivableMonthlyReport)
+# CORRECCIÓN PRINCIPAL: Ruta /report con year y month separados
+@router.get("/report", response_model=AccountReceivableMonthlyReport)
 def monthly_report(
-    month: str = Query(..., description="Month in YYYY-MM format"),
+    year: int = Query(..., description="Year of the report"),
+    month: int = Query(..., description="Month of the report (1-12)"),
     db: Session = Depends(get_db),
 ):
+    # Convertimos los enteros al formato "YYYY-MM" que espera tu servicio
+    month_str = f"{year}-{month:02d}"
+    
     try:
-        return account_receivable_service.get_monthly_report(db, month)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid month. Use YYYY-MM.")
+        return account_receivable_service.get_monthly_report(db, month_str)
+    except Exception as e:
+        print(f"Error: {e}") # Log para depuración
+        raise HTTPException(status_code=400, detail="Error generating report. Check date format.")
 
+# --- FUNCIONES AUXILIARES PARA PDF/EXCEL (Sin cambios en lógica interna) ---
 
 def _build_pdf(report_header: dict, report: dict) -> BytesIO:
     try:
@@ -159,16 +164,19 @@ def _build_excel(report_header: dict, report: dict) -> BytesIO:
     buffer.seek(0)
     return buffer
 
+# --- ENDPOINTS DE EXPORTACIÓN ACTUALIZADOS ---
 
 @router.get("/export/pdf")
 def export_pdf(
-    month: str = Query(..., description="Month in YYYY-MM format"),
+    year: int = Query(..., description="Year"),
+    month: int = Query(..., description="Month"),
     db: Session = Depends(get_db),
 ):
-    report = account_receivable_service.get_monthly_report(db, month)
+    month_str = f"{year}-{month:02d}"
+    report = account_receivable_service.get_monthly_report(db, month_str)
     header = get_report_header("Reporte de cuentas por cobrar")
     pdf_buffer = _build_pdf(header, report)
-    filename = f"accounts_receivable_{month}.pdf"
+    filename = f"accounts_receivable_{month_str}.pdf"
     return StreamingResponse(
         pdf_buffer,
         media_type="application/pdf",
@@ -178,13 +186,15 @@ def export_pdf(
 
 @router.get("/export/excel")
 def export_excel(
-    month: str = Query(..., description="Month in YYYY-MM format"),
+    year: int = Query(..., description="Year"),
+    month: int = Query(..., description="Month"),
     db: Session = Depends(get_db),
 ):
-    report = account_receivable_service.get_monthly_report(db, month)
+    month_str = f"{year}-{month:02d}"
+    report = account_receivable_service.get_monthly_report(db, month_str)
     header = get_report_header("Reporte de cuentas por cobrar")
     excel_buffer = _build_excel(header, report)
-    filename = f"accounts_receivable_{month}.xlsx"
+    filename = f"accounts_receivable_{month_str}.xlsx"
     return StreamingResponse(
         excel_buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
