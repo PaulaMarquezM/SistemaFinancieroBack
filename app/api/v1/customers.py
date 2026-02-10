@@ -66,3 +66,33 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     db.delete(customer)
     db.commit()
     return {"message": "Customer deleted successfully"}
+
+@router.put("/{customer_id}", response_model=CustomerResponse)
+def update_customer(customer_id: int, payload: CustomerCreate, db: Session = Depends(get_db)):
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Usamos tu función auxiliar para obtener los datos
+    update_data = _model_dump(payload)
+
+    # Validar que no estemos duplicando documento/email de OTRA persona
+    if db.query(Customer).filter(Customer.document_number == payload.document_number, Customer.id != customer_id).first():
+        raise HTTPException(status_code=400, detail="Document number already registered by another customer")
+        
+    if payload.email:
+        if db.query(Customer).filter(Customer.email == payload.email, Customer.id != customer_id).first():
+             raise HTTPException(status_code=400, detail="Email already registered by another customer")
+
+    # Actualizar campos
+    for key, value in update_data.items():
+        setattr(customer, key, value)
+
+    try:
+        db.commit()
+        db.refresh(customer)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Update failed")
+
+    return customer
