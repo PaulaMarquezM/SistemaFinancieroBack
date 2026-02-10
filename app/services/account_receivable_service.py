@@ -1,11 +1,8 @@
 from datetime import date
 import calendar
 from typing import List, Dict
-
 from sqlalchemy.orm import Session
-
 from app.models.account_receivable import AccountReceivable
-
 
 def list_pending(db: Session) -> List[AccountReceivable]:
     return (
@@ -14,7 +11,6 @@ def list_pending(db: Session) -> List[AccountReceivable]:
         .order_by(AccountReceivable.due_date.asc())
         .all()
     )
-
 
 def get_monthly_report(db: Session, month: str) -> Dict:
     # month: YYYY-MM
@@ -26,6 +22,7 @@ def get_monthly_report(db: Session, month: str) -> Dict:
     end_day = calendar.monthrange(year, month_num)[1]
     end = date(year, month_num, end_day)
 
+    # ✅ Aquí definimos 'rows' antes de usarla
     rows = (
         db.query(AccountReceivable)
         .filter(AccountReceivable.due_date >= start)
@@ -35,16 +32,19 @@ def get_monthly_report(db: Session, month: str) -> Dict:
     )
 
     total = sum(r.amount_due for r in rows)
-    report_rows = [
-        {
+    
+    report_rows = []
+    for r in rows:
+        report_rows.append({
             "id": r.id,
             "customer_name": r.customer_name,
             "amount_due": r.amount_due,
             "due_date": r.due_date,
             "status": r.status,
-        }
-        for r in rows
-    ]
+            # ✅ Inyectamos la referencia para el Frontend
+            "description": r.description or f"Crédito #{r.credit_id if r.credit_id else 'SF'}",
+            "credit_id": r.credit_id,
+        })
 
     return {
         "month": month,
