@@ -1,143 +1,133 @@
-from __future__ import annotations
-
-from datetime import datetime, timedelta
-from decimal import Decimal
-from pathlib import Path
 import sys
+import os
+import random
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from sqlalchemy.orm import Session
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT))
+# Ajuste de path
+sys.path.append(os.getcwd())
 
-from app.core.database import Base, SessionLocal, engine
-from app.models.credit import Credit
-from app.models.credit_payment import CreditPayment
+from app.core.database import SessionLocal
 from app.models.customer import Customer
-from app.services.amortization import calculate_amortization_schedule
+from app.models.credit import Credit
+from app.models.account_receivable import AccountReceivable
 
+def seed_credits_with_amortization():
+    db: Session = SessionLocal()
+    print("🌱 Sembrando Créditos REALES con sus Tablas de Amortización...")
 
-SEED_TAG = "SEED2026"
+    # 1. Obtener clientes
+    customers = db.query(Customer).all()
+    if not customers:
+        print("⚠️ No hay clientes. Corre 'seed_customers.py' primero.")
+        return
 
-START_DATES = [
-    "2026-01-01",
-    "2026-01-04",
-    "2026-01-07",
-    "2026-01-10",
-    "2026-01-13",
-    "2026-01-16",
-    "2026-01-19",
-    "2026-01-22",
-    "2026-01-25",
-    "2026-01-28",
-    "2026-01-31",
-    "2026-02-03",
-    "2026-02-05",
-    "2026-02-07",
-    "2026-02-09",
-]
+    # 2. Configuración de simulación
+    cantidad_creditos = 25
+    
+    # Fecha base: Hoy es Feb 2026 en tu sistema.
+    fecha_referencia = datetime(2026, 2, 10) 
 
+    for _ in range(cantidad_creditos):
+        cliente = random.choice(customers)
+        monto = random.choice([1000, 3000, 5000, 10000, 15000, 20000])
+        tasa_anual = random.choice([12, 15, 18, 20, 25])
+        plazo_meses = random.choice([12, 24, 36, 48])
+        metodo = random.choice(["frances", "aleman"])
+        
+        # Empezaron hace 1 a 6 meses
+        meses_atras = random.randint(1, 6)
+        fecha_inicio = fecha_referencia - relativedelta(months=meses_atras)
 
-CREDIT_TEMPLATES = [
-    {"principal": "8000", "annual_rate": "12", "periods": 12, "method": "frances"},
-    {"principal": "12000", "annual_rate": "14", "periods": 18, "method": "aleman"},
-    {"principal": "15000", "annual_rate": "16", "periods": 24, "method": "frances"},
-    {"principal": "20000", "annual_rate": "18", "periods": 24, "method": "aleman"},
-    {"principal": "25000", "annual_rate": "20", "periods": 30, "method": "frances"},
-    {"principal": "30000", "annual_rate": "22", "periods": 36, "method": "aleman"},
-    {"principal": "18000", "annual_rate": "15", "periods": 12, "method": "frances"},
-    {"principal": "22000", "annual_rate": "19", "periods": 18, "method": "aleman"},
-    {"principal": "26000", "annual_rate": "21", "periods": 24, "method": "frances"},
-    {"principal": "32000", "annual_rate": "23", "periods": 30, "method": "aleman"},
-    {"principal": "36000", "annual_rate": "24", "periods": 36, "method": "frances"},
-    {"principal": "10000", "annual_rate": "13", "periods": 12, "method": "aleman"},
-    {"principal": "14000", "annual_rate": "17", "periods": 18, "method": "frances"},
-    {"principal": "28000", "annual_rate": "25", "periods": 30, "method": "aleman"},
-    {"principal": "40000", "annual_rate": "26", "periods": 36, "method": "frances"},
-]
+        # --- CÁLCULOS FINANCIEROS ---
+        tasa_mensual = (tasa_anual / 100) / 12
+        
+        # Cuota Referencial
+        cuota_ref = 0
+        if metodo == 'frances':
+            cuota_ref = (monto * tasa_mensual) / (1 - (1 + tasa_mensual) ** -plazo_meses)
+        else: # Aleman
+            cuota_ref = (monto / plazo_meses) + (monto * tasa_mensual)
 
+        # 3. Crear el Crédito Padre
+        credit = Credit(
+            customer_id=cliente.id,
+            principal=float(monto),
+            annual_rate=float(tasa_anual),
+            periods=plazo_meses,
+            method=metodo,
+            start_date=fecha_inicio,
+            status="active",
+            total_interest=0, 
+            total_amount=0,   
+            monthly_payment=round(cuota_ref, 2),
+            description=f"Préstamo {metodo.capitalize()} - {cliente.first_name}"
+        )
+        db.add(credit)
+        db.commit() 
+        db.refresh(credit)
 
-def _parse_date(value: str) -> datetime:
-    return datetime.strptime(value, "%Y-%m-%d")
+        # 4. Generar la Tabla de Amortización (Cuentas por Cobrar)
+        saldo = float(monto)
+        amortizacion_fija_aleman = monto / plazo_meses if plazo_meses > 0 else 0
+        
+        acumulado_interes = 0
+        acumulado_total = 0
 
+        for i in range(1, plazo_meses + 1):
+            # Fecha de vencimiento
+            fecha_venc = fecha_inicio + relativedelta(months=i)
+            
+            # Cálculos
+            interes_mes = saldo * tasa_mensual
+            if metodo == 'frances':
+                cuota_mes = cuota_ref
+                capital_mes = cuota_mes - interes_mes
+            else: # Aleman
+                capital_mes = amortizacion_fija_aleman
+                cuota_mes = capital_mes + interes_mes
+            
+            saldo -= capital_mes
+            if saldo < 0: saldo = 0
 
-def seed_credits() -> None:
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    created = 0
-    skipped = 0
+            acumulado_interes += interes_mes
+            acumulado_total += cuota_mes
+
+            # Determinar estado
+            estado_cuota = "pending"
+            
+            if fecha_venc < fecha_referencia:
+                if random.random() > 0.1: # 90% pagado
+                    estado_cuota = "paid"
+                else:
+                    estado_cuota = "overdue" # Mora
+            
+            # Crear Cuenta por Cobrar (SOLO CAMPOS BÁSICOS SEGUROS)
+            ar = AccountReceivable(
+                customer_id=cliente.id,
+                customer_name=f"{cliente.first_name} {cliente.last_name}",
+                amount_due=round(cuota_mes, 2),
+                due_date=fecha_venc,
+                status=estado_cuota,
+                description=f"Cuota {i}/{plazo_meses} - Crédito #{credit.id}"
+            )
+            db.add(ar)
+
+        # 5. Actualizar totales
+        credit.total_interest = round(acumulado_interes, 2)
+        credit.total_amount = round(acumulado_total, 2)
+        db.add(credit)
 
     try:
-        customers = db.query(Customer).order_by(Customer.id).all()
-        if len(customers) < 15:
-            raise RuntimeError("Not enough customers to seed credits. Seed customers first.")
-
-        for i in range(15):
-            description = f"{SEED_TAG}-{i + 1:02d}"
-            exists = db.query(Credit).filter(Credit.description == description).first()
-            if exists:
-                skipped += 1
-                continue
-
-            customer = customers[i]
-            template = CREDIT_TEMPLATES[i]
-            start_date = _parse_date(START_DATES[i])
-
-            principal = Decimal(template["principal"])
-            annual_rate = Decimal(template["annual_rate"])
-            periods = int(template["periods"])
-            method = template["method"]
-
-            schedule = calculate_amortization_schedule(
-                principal=principal,
-                annual_rate=annual_rate,
-                periods=periods,
-                method=method,
-            )
-
-            if not schedule:
-                raise RuntimeError(f"Failed schedule for credit {description}")
-
-            total_interest = sum(row["interest"] for row in schedule)
-            total_amount = sum(row["payment"] for row in schedule)
-            monthly_payment = schedule[0]["payment"] if method == "frances" else None
-
-            credit = Credit(
-                customer_id=customer.id,
-                principal=float(principal),
-                annual_rate=float(annual_rate),
-                periods=periods,
-                method=method,
-                total_interest=float(total_interest),
-                total_amount=float(total_amount),
-                monthly_payment=float(monthly_payment) if monthly_payment else None,
-                description=description,
-                status="active",
-                start_date=start_date,
-            )
-            db.add(credit)
-            db.flush()
-
-            for row in schedule:
-                due_date = start_date + timedelta(days=30 * row["period"])
-                payment = CreditPayment(
-                    credit_id=credit.id,
-                    period_number=row["period"],
-                    due_date=due_date,
-                    expected_payment=float(row["payment"]),
-                    expected_principal=float(row["principal"]),
-                    expected_interest=float(row["interest"]),
-                    expected_balance=float(row["balance"]),
-                    is_paid=False,
-                )
-                db.add(payment)
-
-            created += 1
-
         db.commit()
+        print(f"✅ Generados {cantidad_creditos} créditos con sus respectivas tablas de amortización.")
+    except Exception as e:
+        print(f"❌ Error al guardar datos: {e}")
+        print("💡 CONSEJO: Si vuelve a fallar, pásame el contenido de 'app/models/account_receivable.py'")
+        db.rollback()
     finally:
         db.close()
 
-    print(f"Credits created: {created}, skipped: {skipped}")
-
-
 if __name__ == "__main__":
-    seed_credits()
+    seed_credits_with_amortization()
